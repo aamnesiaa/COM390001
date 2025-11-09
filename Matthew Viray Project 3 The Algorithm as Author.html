@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generative Poem Sketch</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sawarabi+Mincho&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #0d001f;
+      color: #f6efff;
+      font-family: 'Sawarabi Mincho', 'Georgia', serif;
+    }
+    #controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      font-size: 0.8rem;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 8px;
+      padding: 8px 12px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    #controls span {
+      margin-right: 4px;
+      color: #e5d6ff;
+      font-family: 'Sawarabi Mincho', serif;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #f69, #a6c);
+      outline: none;
+      margin: 0 6px;
+      width: 110px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid #c5a5e6;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid #c5a5e6;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    button {
+      background: linear-gradient(135deg, #f69, #a6c);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      margin-left: 8px;
+      font-family: 'Sawarabi Mincho', serif;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+  </style>
+</head>
+<body>
+<div id="controls"></div>
+<script>
+const det = ['the','a','this','that'];
+const adj = [
+  'kawaii','sakura','mystic','crimson','glittering','ancient',
+  'shimmering','silent','whispering','neon','ghostly','noble',
+  'radiant','yami','kirei'
+];
+const noun = [
+  'sakura','samurai','ninja','temple','anime','dragon','blossom',
+  'koi','bamboo','Kyoto','haru','sky','neon city','Fuji',
+  'goddess','spirit','wind','river','moon','dream'
+];
+const verb = [
+  'whispers','drifts','wanders','glows','shivers','dances',
+  'melts','breathes','echoes','lingers','flies','duels',
+  'meditates','dreams','explodes'
+];
+const prep = ['beneath','above','within','around','beyond','through'];
+const adv = [
+  'softly','forever','quietly','in reverie','endlessly','in neon',
+  'in silence','in blue','in blossom','with honor','with grace',
+  'in shadows','in dreams'
+];
+
+let poemLines = [];
+let lastGenerate = 0;
+let lineSlider, speedSlider, colorSlider, generateButton;
+let shapes = [];
+let controlsHeight = 0; 
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  textFont('Sawarabi Mincho, Georgia, serif');
+  textSize(22);
+  textAlign(LEFT, TOP);
+  colorMode(HSB, 360, 255, 255, 255);
+  const controlsDiv = select('#controls');
+  createSpan('Lines: ').parent(controlsDiv);
+  lineSlider = createSlider(1, 8, 5, 1).parent(controlsDiv);
+  createSpan('  ').parent(controlsDiv);
+  createSpan('Speed: ').parent(controlsDiv);
+  speedSlider = createSlider(1, 10, 6, 1).parent(controlsDiv);
+  createSpan('  ').parent(controlsDiv);
+  createSpan('Colour: ').parent(controlsDiv);
+  colorSlider = createSlider(50, 255, 120, 5).parent(controlsDiv);
+  createSpan('  ').parent(controlsDiv);
+  generateButton = createButton('Generate Now').parent(controlsDiv);
+  generateButton.mousePressed(forceGenerate);
+
+  controlsHeight = controlsDiv.elt.offsetHeight;
+
+  generatePoem();
+}
+
+function draw() {
+  const regenInterval = map(speedSlider.value(), 1, 10, 4000, 20000);
+  if (millis() - lastGenerate > regenInterval) {
+    generatePoem();
+  }
+  background(280, 50, 10, 30);
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const s = shapes[i];
+    s.update();
+    s.display();
+    if (s.alpha <= 0) shapes.splice(i, 1);
+  }
+  fill(255);
+  noStroke();
+  const lh = 30;
+  const yOffset = controlsHeight + 20;
+  for (let i = 0; i < poemLines.length; i++) {
+    text(poemLines[i], 40, yOffset + i * lh);
+  }
+}
+
+function generatePoem() {
+  poemLines = [];
+  const n = lineSlider.value();
+  for (let i = 0; i < n; i++) {
+    const pattern = floor(random(5));
+    let line;
+    if (pattern === 0) {
+      line = `${random(det)} ${random(adj)} ${random(noun)} ${random(verb)} ${random(prep)} ${random(det)} ${random(adj)} ${random(noun)}.`;
+    } else if (pattern === 1) {
+      line = `${random(adj)} ${random(noun)} ${random(verb)} ${random(adv)}.`;
+    } else if (pattern === 2) {
+      line = `${random(noun)} ${random(verb)} ${random(prep)} ${random(noun)} ${random(adv)}.`;
+    } else if (pattern === 3) {
+      line = `Under ${random(adj)} skies, ${random(noun)} ${random(verb)} ${random(adv)}.`;
+    } else {
+      line = `Like an anime scene, ${random(noun)} ${random(verb)} ${random(adv)}.`;
+    }
+    line = line.charAt(0).toUpperCase() + line.slice(1);
+    poemLines.push(line);
+  }
+  lastGenerate = millis();
+  for (let i = 0; i < 8; i++) shapes.push(new Star());
+}
+
+function forceGenerate() {
+  generatePoem();
+}
+
+class Star {
+  constructor() {
+    this.x = random(width);
+    this.y = random(height);
+    this.size = random(20, 80);
+    const pastelHues = [330, 300, 260, 220, 190];
+    this.hue = random(pastelHues);
+    this.alpha = random(80, 160);
+    this.vx = random(-0.4, 0.4);
+    this.vy = random(0.2, 0.8);
+    this.rot = random(TWO_PI);
+    this.rotVel = random(-0.03, 0.03);
+    this.numPoints = floor(random(5, 8));
+    this.innerRatio = random(0.35, 0.6);
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.rot += this.rotVel;
+    this.alpha -= 0.4;
+  }
+  display() {
+    const sat = colorSlider.value();
+    fill(this.hue, sat, 255, this.alpha);
+    noStroke();
+    push();
+    translate(this.x, this.y);
+    rotate(this.rot);
+    beginShape();
+    const totalVerts = this.numPoints * 2;
+    for (let i = 0; i < totalVerts; i++) {
+      const angle = TWO_PI * i / totalVerts;
+      const rad = (i % 2 === 0) ? this.size : this.size * this.innerRatio;
+      vertex(rad * cos(angle), rad * sin(angle));
+    }
+    endShape(CLOSE);
+    pop();
+  }
+}
+
+function mousePressed() {
+  for (let i = 0; i < 8; i++) shapes.push(new Star());
+}
+
+function keyPressed() {
+  if (key === ' ') {
+    forceGenerate();
+  } else if (key === 's' || key === 'S') {
+    saveCanvas('poem-' + Date.now(), 'png');
+  }
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  const controlsDiv = select('#controls');
+  controlsHeight = controlsDiv.elt.offsetHeight;
+}
+</script>
+</body>
+</html>
